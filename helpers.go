@@ -106,6 +106,7 @@ type TokenResponse struct {
 //   - *TokenResponse: Parsed token response from the authorization server
 //   - An error if the token exchange fails (e.g., network error, provider error, invalid grant)
 func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, codeOrToken string, redirectURL string, codeVerifier string) (*TokenResponse, error) {
+	t.logger.Errorf("exchangeTokens")
 	data := url.Values{
 		"grant_type": {grantType},
 	}
@@ -116,6 +117,7 @@ func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, code
 	}
 
 	if grantType == "authorization_code" {
+		t.logger.Errorf("authorization_code")
 		data.Set("code", codeOrToken)
 		data.Set("redirect_uri", redirectURL)
 
@@ -123,11 +125,13 @@ func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, code
 			data.Set("code_verifier", codeVerifier)
 		}
 	} else if grantType == "refresh_token" {
+		t.logger.Errorf("refresh_token")
 		data.Set("refresh_token", codeOrToken)
 	}
 
 	client := t.tokenHTTPClient
 	if client == nil {
+		t.logger.Errorf("client is nil")
 		// Use shared transport pool to prevent memory leaks
 		jar, _ := cookiejar.New(nil) // Safe to ignore: cookiejar creation with nil options rarely fails
 		pooledClient := CreateTokenHTTPClient()
@@ -151,6 +155,7 @@ func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, code
 
 	useBasicAuth := false
 	if t.clientAssertion != nil {
+		t.logger.Errorf("clientAssertion is not nil")
 		assertion, err := t.clientAssertion.Sign(tokenURL, t.clientID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign client assertion: %w", err)
@@ -158,8 +163,10 @@ func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, code
 		data.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		data.Set("client_assertion", assertion)
 	} else if t.clientAuthMethod == "client_secret_basic" {
+		t.logger.Errorf("client_secret_basic")
 		useBasicAuth = true
 	} else {
+		t.logger.Errorf("else")
 		data.Set("client_secret", t.clientSecret)
 	}
 
@@ -172,25 +179,31 @@ func (t *TraefikOidc) exchangeTokens(ctx context.Context, grantType string, code
 		setOAuthBasicAuth(req, t.clientID, t.clientSecret)
 	}
 
+	t.logger.Errorf("calling client.Do")
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange tokens: %w", err)
 	}
+	t.logger.Errorf("calling defer")
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body) // Safe to ignore: draining response body on defer
 		_ = resp.Body.Close()                 // Safe to ignore: closing body on defer
 	}()
 
 	if resp.StatusCode != http.StatusOK {
+		t.logger.Errorf("not ok")
 		limitReader := io.LimitReader(resp.Body, 1024*10)
 		bodyBytes, _ := io.ReadAll(limitReader) // Safe to ignore: reading error body for diagnostics
 		return nil, fmt.Errorf("token endpoint returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
+	t.logger.Errorf("ok")
 
 	var tokenResponse TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode token response: %w", err)
 	}
+	t.logger.Errorf("done")
 
 	return &tokenResponse, nil
 }
